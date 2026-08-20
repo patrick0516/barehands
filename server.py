@@ -296,10 +296,27 @@ class Handler(SimpleHTTPRequestHandler):
         self.wfile.write(body)
 
 
+def _start_assistant():
+    """Best-effort start of the built-in voice assistant (assistant/).
+    Never allowed to take the board server down with it: missing
+    dependencies (numpy/sounddevice/vosk/websockets aren't installed) or
+    missing setup (no wake-word model, no GEMINI_API_KEY) just print a
+    message and leave the board running camera/gesture-only."""
+    try:
+        from assistant.voice import start_assistant_thread
+    except Exception as e:
+        print(f"(voice assistant not started: {e!r} -- "
+              f"run `pip install -r requirements.txt` to enable it; "
+              f"board still works without it)", flush=True)
+        return
+    start_assistant_thread()
+
+
 if __name__ == "__main__":
     (HERE / "state").mkdir(exist_ok=True)   # the ring's runtime files land here
     port = int(CONFIG.get("port", 8794))
-    print(f"barehands up: http://127.0.0.1:{port}/stage.html", flush=True)
+    print(f"Jarvis up: http://127.0.0.1:{port}/stage.html", flush=True)
     print("  tracker (camera): open that URL in Chrome", flush=True)
     print("  render (overlay): same URL + ?role=render", flush=True)
+    _start_assistant()
     ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()

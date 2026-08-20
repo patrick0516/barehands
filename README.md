@@ -1,32 +1,63 @@
-# barehands
+# Jarvis
 
-> **Fork Notice:** This is a modified fork of [jaredrhod/barehands](https://github.com/jaredrhod/barehands) by [Jared Rhodenizer](https://github.com/jaredrhod). Original project licensed under AGPL-3.0. We are making modifications for our own use case. All credit to the original author.
+> **Fork Notice:** This is a modified fork of [jaredrhod/barehands](https://github.com/jaredrhod/barehands) by [Jared Rhodenizer](https://github.com/jaredrhod), renamed **Jarvis** for our own use. Original project licensed under AGPL-3.0. We are making modifications for our own use case. All credit to the original author.
 
 > **Never used Claude Code?** Start at [jaredrhod.com](https://jaredrhod.com): pick your situation and it routes you to the right path.
 
 **Runs on:** a webcam and Chrome; works with any AI. Any program that writes a file or curls localhost can be its brain.
 
-Move things on your screen with your bare hands. barehands turns your webcam into a hand-tracked interface: notes, images, and 3D models float over your camera as glass cards. You pinch them, throw them, stretch them, force-pull them across the room, and blow an engine apart into its exploded view with a drag of two fingers. No headset. No controllers. No gloves. Bare hands.
+Move things on your screen with your bare hands. Jarvis turns your webcam into a hand-tracked interface: notes, images, and 3D models float over your camera as glass cards. You pinch them, throw them, stretch them, force-pull them across the room, and blow an engine apart into its exploded view with a drag of two fingers. No headset. No controllers. No gloves. Bare hands.
 
-And it's a body waiting for a brain: wire in your AI and the on-screen ring becomes its face, while two small scripts give it hands and eyes on your board. Free to use, share, and build on, including commercially inside your own business (see LICENSE).
+And it's a body waiting for a brain: wire in your AI and the on-screen ring becomes its face, while two small scripts give it hands and eyes on your board. It ships with its own voice brain too (see below). Free to use, share, and build on, including commercially inside your own business (see LICENSE).
 
-**Watch it in action:**
+**Watch it in action** (from the upstream project this was forked from):
 
 [![barehands demo video](https://img.youtube.com/vi/cV02finVi4o/maxresdefault.jpg)](https://youtu.be/cV02finVi4o)
 
 ## Run it (nothing needed)
 
 ```
-git clone https://github.com/jaredrhod/barehands
+git clone https://github.com/patrick0516/barehands
 cd barehands
 python3 server.py
 ```
 
 On Windows the command is `python server.py`. Open **http://127.0.0.1:8794/stage.html** in Chrome, allow the camera, and wave. That's the whole install: the server is stdlib Python, and the page loads its hand tracking (Google MediaPipe) and 3D (three.js) from CDNs on first run.
 
-**Already in a Claude Code session with your agent?** One sentence does it all: *"clone https://github.com/jaredrhod/barehands.git, then read barehands/barehands.md and set me up."* Your agent installs it, configures it, and wires itself in.
+**Already in a Claude Code session with your agent?** One sentence does it all: *"clone https://github.com/patrick0516/barehands.git, then read barehands/barehands.md and set me up."* Your agent installs it, configures it, and wires itself in.
 
 Tap the ring → orbs bloom → tap an orb → your files unfold on glass. The sample notes teach the gestures from inside the board itself.
+
+## The built-in voice assistant (optional)
+
+Jarvis ships with a Sadie voice assistant (`assistant/`, ported from
+[sadie-voice](https://github.com/patrick0516/sadie-voice)): say the wake
+word, talk to it, and it can hand off tasks to `opencode` in the
+background. It's opt-in and adds real dependencies on top of the
+zero-install board above:
+
+```
+pip install -r requirements.txt
+cp .env.example .env               # then edit .env, paste in your key
+```
+
+Get a free Gemini API key from **https://aistudio.google.com/apikey**
+(needs your own Google account — this step can't be automated for you).
+`.env` is gitignored, never committed.
+
+You'll also need a vosk wake-word model — grab `vosk-model-small-cn-0.22`
+from **https://alphacephei.com/vosk/models**, unzip it, and rename the
+folder to `assistant/wakeword-model/` (not tracked in git, this is a
+one-time ~40MB download). Then `python3 server.py`
+starts both the board and the assistant together; without the install
+step, the board still runs exactly as before and just logs that the
+assistant didn't start.
+
+Currently ported: wake word, real-time conversation, and background task
+dispatch through `opencode`. Desktop control, memory, and calendar/todo
+management are intentionally not part of this yet — see
+[sadie-voice](https://github.com/patrick0516/sadie-voice) if you want those
+today.
 
 ## Give it your notes
 
@@ -48,7 +79,7 @@ One line per orb. Add more folders, rename them, point them anywhere. The `media
 
 **The easy way:** open the repo in Claude Code and say *"read barehands.md and set me up."* The setup wizard interviews you, writes the config, and wires your assistant in end to end.
 
-**The manual way:** barehands speaks two dead-simple protocols:
+**The manual way:** Jarvis speaks two dead-simple protocols:
 
 - **The ring is a face.** It reads tiny files in `state/`: write `thinking` (or `idle` / `listening` / `speaking`) to `state/state` and the ring reacts. No files, no problem: it idles beautifully. Claude Code users: two hooks in `settings.json` make the ring mirror your real sessions (the wizard pastes them for you).
 - **The board is a stage.** `bin/board.sh '{"a":"present","title":"THE PLAN","body":"..."}'` and the thing flies center stage, enlarged and spotlit, everything else dimmed: that's the show-me verb, for when you ask your AI to put something up. `add_card`, `add_img`, `hand`, `explode`, `yank`, `hover` stage the ensemble pieces; the server enforces an action allowlist and the media jail, so it's safe to hand to an assistant. `bin/board-state.sh` is the reverse: it prints what's on the board, so your AI can look before it talks. The wizard teaches your assistant to reach for the glass whenever you ask to SEE something instead of answering in text.
@@ -73,7 +104,7 @@ Hand tracking by [Google MediaPipe](https://developers.google.com/mediapipe) (Ap
 
 ## Updating
 
-barehands improves continuously, and gesture fixes ship often. To update, double-click the `Update` icon setup left on your Desktop, or run `./update.sh` (`update.bat` on Windows) in this folder: either shows you what changed before applying it. Saying **"pull the latest barehands and tell me what changed"** to your agent works too. Your config, your notes, and your media stay untouched: they live outside the tracked files. Installed through fullstack-agent? `./fullstack-agent/update.sh` updates every piece at once and prints what changed.
+Jarvis improves continuously, and gesture fixes ship often. To update, double-click the `Update` icon setup left on your Desktop, or run `./update.sh` (`update.bat` on Windows) in this folder: either shows you what changed before applying it. Saying **"pull the latest barehands and tell me what changed"** to your agent works too (the update scripts still talk to the upstream repo by its real name). Your config, your notes, and your media stay untouched: they live outside the tracked files. Installed through fullstack-agent? `./fullstack-agent/update.sh` updates every piece at once and prints what changed.
 
 ## The rest of it
 

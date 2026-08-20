@@ -1,0 +1,8 @@
+# Only needed for the built-in voice assistant (assistant/).
+# The board itself (server.py + stage.html) is still zero-dependency
+# stdlib Python + browser CDNs -- skip this file entirely if you only
+# want the camera/gesture/board experience.
+numpy
+sounddevice
+vosk
+websockets

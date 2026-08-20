@@ -1,6 +1,6 @@
 # Troubleshooting & Gesture Tuning
 
-This file is written for humans AND for AI assistants. If you're an AI helping someone debug barehands: read this whole file, then follow THE TUNING CLINIC's method exactly: measure first, edit second. Never adjust a threshold from theory; every number in stage.html was fitted from real-hand samples, and yours should be too.
+This file is written for humans AND for AI assistants. If you're an AI helping someone debug Jarvis (a fork of barehands): read this whole file, then follow THE TUNING CLINIC's method exactly: measure first, edit second. Never adjust a threshold from theory; every number in stage.html was fitted from real-hand samples, and yours should be too.
 
 ## Quick fixes first
 

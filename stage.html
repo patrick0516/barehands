@@ -21,7 +21,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 <html>
 <head>
 <meta charset="utf-8">
-<title>barehands</title>
+<title>Jarvis</title>
 <style>
   html, body { margin:0; padding:0; width:100%; height:100%; overflow:hidden;
                background:#000; font-family:-apple-system,"SF Pro Display",sans-serif; }
@@ -261,7 +261,7 @@ if (location.protocol === "file:") {
     '<body style="margin:0;background:#04191c;color:#dff3ee;font:15px/1.65 ui-monospace,Menlo,monospace;' +
     'display:flex;align-items:center;justify-content:center;height:100vh;padding:24px;text-align:left">' +
     '<div style="max-width:620px">' +
-    '<div style="font-size:22px;letter-spacing:.18em;color:#6fe3c9;margin-bottom:18px">BAREHANDS NEEDS ITS SERVER</div>' +
+    '<div style="font-size:22px;letter-spacing:.18em;color:#6fe3c9;margin-bottom:18px">JARVIS NEEDS ITS SERVER</div>' +
     '<p>You opened this file directly, so there is no server behind it. The camera and the gestures will still work, ' +
     'but nothing will ever <b>open</b>: tapping a card asks the server for the file, and there is nothing to ask.</p>' +
     '<p style="margin-top:16px">Start it from the barehands folder:</p>' +
@@ -272,7 +272,7 @@ if (location.protocol === "file:") {
     'http://127.0.0.1:8794/stage.html</pre>' +
     '<p style="margin-top:18px;color:#7fb3ab">If you changed "port" in barehands.json, use that port instead.</p>' +
     '</div></body>';
-  throw new Error("barehands: opened over file://, server required");
+  throw new Error("Jarvis: opened over file://, server required");
 }
 // First-run watchdog: the hand tracker and the 3D library arrive from CDNs,
 // so with no internet the boot screen sits forever with no error. Say so.
@@ -284,7 +284,7 @@ setTimeout(function () {
 </script>
 <video id="cam" autoplay playsinline muted></video>
 <div id="behind"></div>
-<div id="boot">BAREHANDS<br><span style="color:#a8d8cf;font-size:12px;letter-spacing:0.22em">by jaredrhod</span><br><span style="color:#a8d8cf;font-size:13px">loading hand tracker… allow the camera when asked</span></div>
+<div id="boot">JARVIS<br><span style="color:#a8d8cf;font-size:12px;letter-spacing:0.22em">fork of barehands, by jaredrhod</span><br><span style="color:#a8d8cf;font-size:13px">loading hand tracker… allow the camera when asked</span></div>
 <div id="hint">tap the RING = orbs · tap an orb = its tree · TAP a card = open · pinch-drag = move · hold still ~1s = 3D rotate · two hands = scale · TAP an open item = close · CLAP (palms together, fingers up) = ring center-stage · CLAW: flash open, claw, aim, hold the strain 2s, SNAP = force pull · empty pinch dragged sideways = explode scrub · R respawn / C camera / D debug</div>
 <div id="debug"></div>
 <div id="toast"></div>
@@ -2032,7 +2032,7 @@ async function boot() {
   document.getElementById("boot").remove();
   await loadTree();
   spawnStage();
-  toast("barehands v1.0", 2000);  // build fingerprint
+  toast("Jarvis v1.0", 2000);  // build fingerprint
   let lastT = performance.now();
 
   function frame(now) {
