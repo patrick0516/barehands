@@ -90,12 +90,18 @@ TOOLS = [{
 
 
 def _ws_url():
+    # A plain Gemini API key authenticates as a `key=` query param, NOT
+    # as a Bearer token -- Bearer is for real OAuth access tokens, which
+    # this port doesn't use (see config.py's docstring on why the
+    # OAuth-refresh flow was dropped). Confirmed live 2026-08-21: Bearer
+    # + a plain API key gets rejected with "invalid authentication
+    # credentials. Expected OAuth 2 access token..."
     return ("wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta."
-            "GenerativeService.BidiGenerateContent")
+            "GenerativeService.BidiGenerateContent?key=" + config.gemini_key())
 
 
 def _ws_headers():
-    return {"Authorization": "Bearer " + config.gemini_key()}
+    return {}
 
 
 def start_opencode_bg(task):
