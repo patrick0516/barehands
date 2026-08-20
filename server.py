@@ -49,6 +49,7 @@ Your AI drives the ring by writing tiny files into ./state/ :
 Missing files are fine — the ring just idles.
 """
 import json
+import os
 import time
 import urllib.parse
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -105,20 +106,34 @@ def resolve_media_src(src):
     Shared by the HTTP /cmd handler and the in-process voice assistant
     (assistant/voice.py's summon_model) -- the assistant bypasses HTTP
     entirely (same process), so it must still go through this jail
-    rather than queuing an unvalidated `src` straight into _CMDS."""
+    rather than queuing an unvalidated `src` straight into _CMDS.
+
+    Symlink note: media/holo/ can legitimately hold a symlink back into
+    media/models/ (see media/holo/README.md -- "the same model files
+    render as the blue hologram wireframe here"), so the exact-path
+    check below validates safety against the SYMLINK-FOLLOWED target
+    (Path.resolve()) but reports the URL from the caller's own,
+    lexically-normalized path (os.path.normpath, never touches the
+    filesystem or follows links). Reporting the resolved target instead
+    would silently collapse "holo/x.glb" to "models/x.glb" and serve
+    the normal render where the wireframe one was asked for -- caught
+    live 2026-08-21 wiring up DamagedHelmet.glb as exactly that kind of
+    symlink."""
     rel = str(src or "").lstrip("/")
     if rel.startswith("media/"):
         rel = rel[6:]
     media = (HERE / "media").resolve()
-    target = (media / rel).resolve()
-    if media not in target.parents or not target.is_file():
-        name = Path(rel).name.lower()
-        hits = [p for p in media.rglob("*")
-                if p.is_file() and p.name.lower() == name] if name else []
-        if len(hits) != 1:
-            raise ValueError("not in the media airlock")
-        target = hits[0]
-    return "/media/" + target.relative_to(media).as_posix()
+    norm_rel = os.path.normpath(rel).replace(os.sep, "/") if rel else ""
+    if norm_rel and not norm_rel.startswith("..") and not os.path.isabs(norm_rel):
+        resolved = (media / norm_rel).resolve()
+        if media in resolved.parents and resolved.is_file():
+            return "/media/" + norm_rel
+    name = Path(rel).name.lower()
+    hits = [p for p in media.rglob("*")
+            if p.is_file() and p.name.lower() == name] if name else []
+    if len(hits) != 1:
+        raise ValueError("not in the media airlock")
+    return "/media/" + hits[0].relative_to(media).as_posix()
 
 
 def list_media_models():

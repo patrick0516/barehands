@@ -313,7 +313,7 @@ setTimeout(function () {
 <video id="cam" autoplay playsinline muted></video>
 <div id="behind"></div>
 <div id="boot">JARVIS<br><span style="color:#a8d8cf;font-size:12px;letter-spacing:0.22em">fork of barehands, by jaredrhod</span><br><span style="color:#a8d8cf;font-size:13px">loading hand tracker… allow the camera when asked</span></div>
-<div id="hint">tap the RING = orbs · tap an orb = its tree · TAP a card = open · pinch-drag = move · hold still ~1s = 3D rotate · two hands = scale · TAP an open item = close · CLAP (palms together, fingers up) = ring center-stage · CLAW: flash open, claw, aim, hold the strain 2s, SNAP = force pull · empty pinch dragged sideways = explode scrub · open-hand swipe = switch desktop · R respawn / C camera / D debug / S sleep-wake assistant</div>
+<div id="hint">tap the RING = orbs · tap an orb = its tree · TAP a card = open · pinch-drag = move · hold still ~1s = 3D rotate · two hands = scale · TAP an open item = close · CLAP (palms together, fingers up) = ring center-stage · CLAW: flash open, claw, aim, hold the strain 2s, SNAP = force pull · empty pinch dragged sideways = explode scrub · open-hand swipe = switch desktop · R respawn / C camera / D debug / S sleep-wake assistant / ←→ switch desktop</div>
 <div id="debug"></div>
 <div id="toast"></div>
 <div id="desktopDots"></div>
@@ -1582,6 +1582,20 @@ function updateDesktopDots() {
   }
 }
 
+// MULTI-DESKTOP (TASK-0004): the one place that actually changes
+// activeDesktop, called from both the swipe gesture (frame()) and the
+// [ / ] keyboard fallback below -- added because the swipe's threshold
+// is an untuned first pass (see the comment where it's checked) and the
+// user needs a way to actually use the feature before that's verified
+// against a real hand.
+function switchDesktop(dir) {
+  activeDesktop += dir;
+  lastDesktopSwitchT = performance.now();
+  toast(`desktop ${activeDesktop}`, 900);
+  foley.throw_();
+  updateDesktopDots();
+}
+
 // ---- camera selection: ?cam=<label substring> > saved choice > default.
 // C cycles live. Multiple cameras are the RIG DESIGN: track on a second
 // camera mounted at the main lens while OBS films with the first — no
@@ -1655,6 +1669,11 @@ addEventListener("keydown", e => {
     toast("OMNI sampler: hold the pose for 4 seconds…", 4000);
   }
   if (e.key === "s" || e.key === "S") toggleAssistantSleep();
+  // MULTI-DESKTOP (TASK-0004) keyboard fallback: the swipe gesture's
+  // threshold isn't verified against a real hand yet (see frame()) --
+  // arrow keys switch desktops right now, no gesture tuning required.
+  if (e.key === "ArrowRight") switchDesktop(1);
+  if (e.key === "ArrowLeft") switchDesktop(-1);
 });
 
 // ---- ASSISTANT SLEEP/WAKE: a manual override for the voice assistant,
@@ -2322,12 +2341,8 @@ async function boot() {
             const sspd = Math.hypot(sdx, sdy) / sdt;
             if (Math.abs(sdx) > Math.abs(sdy) * 2 && sspd > 1600 &&
                 now - lastDesktopSwitchT > 700) {
-              activeDesktop += sdx > 0 ? 1 : -1;
-              lastDesktopSwitchT = now;
+              switchDesktop(sdx > 0 ? 1 : -1);
               cur.history.length = 0;   // don't re-trigger off the same swipe
-              toast(`desktop ${activeDesktop}`, 900);
-              foley.throw_();
-              updateDesktopDots();
             }
           }
         }
