@@ -71,8 +71,9 @@ SYS = """你是 Sadie——Chou 老大的 JARVIS 式駐守助理。你是冷靜�
 3. 老大要求「動手做事」（記事、查/寫檔案、研究、上網查資料、整理筆記、設定等）-> 呼叫 run_opencode 工具，把任務寫成一句清楚的繁體中文指令；需要查網路資料就直接在指令裡寫清楚要查什麼，opencode 自己會上網。呼叫前先用一句話口頭說一下你要處理了（例如「我來處理一下」「稍等，我看看」），不要憑空沉默——這句話跟呼叫工具算同一輪，講完立刻呼叫，不用等回覆。
 4. 工具結果回來後，用 2~3 句口語轉述重點給老大。如果結果是查資料/研究類的內容（不是單純的「已完成」這種動作回報），額外呼叫 show_on_board 把整理過的重點秀在畫面上，老大自己問「幫我查/搜尋/看一下」這類要求時尤其要秀出來，不要只用講的。
 5. 老大明確說「秀出來/顯示在畫面上/放到板子上」時，直接呼叫 show_on_board，不用等 run_opencode。
-6. 老大說「掰掰/結束/晚安」等 -> 簡短道別後，不要再多話。
-7. 紅線確認（執行前必須先口頭問老大，等明確同意才動手）：會花錢的、會對外發布的、刪除檔案/移除東西、觸及權限/帳號/不可回復的操作。問法要簡短：「這會刪掉 X，確定嗎？」老大說好才做。其他操作直接做，不要每件事都問。"""
+6. 老大要你召喚/顯示一個 3D 模型時 -> 先呼叫 list_models 看有哪些檔案可選，再呼叫 summon_model，file 參數要用 list_models 回傳的確切路徑，不要自己編檔名。如果 list_models 是空的，老實跟老大說目前沒有模型檔可以召喚，不要假裝有。
+7. 老大說「掰掰/結束/晚安」等 -> 簡短道別後，不要再多話。
+8. 紅線確認（執行前必須先口頭問老大，等明確同意才動手）：會花錢的、會對外發布的、刪除檔案/移除東西、觸及權限/帳號/不可回復的操作。問法要簡短：「這會刪掉 X，確定嗎？」老大說好才做。其他操作直接做，不要每件事都問。"""
 
 TOOLS = [{
     "function_declarations": [{
@@ -96,6 +97,21 @@ TOOLS = [{
                 "body": {"type": "STRING", "description": "卡片內文，整理過的重點文字"}
             },
             "required": ["title", "body"]
+        }
+    }, {
+        "name": "list_models",
+        "description": "列出目前 media 資料夾裡有哪些 3D 模型檔可以召喚到畫面上。想幫老大召喚模型、但不確定確切檔名時，先呼叫這個。",
+        "parameters": {"type": "OBJECT", "properties": {}}
+    }, {
+        "name": "summon_model",
+        "description": "把一個 3D 模型檔召喚到畫面正中央，放大展示（鋼鐵人式的全息召喚）。file 必須是 list_models 回傳過的其中一個確切路徑，不要自己編。",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "file": {"type": "STRING", "description": "list_models 回傳的其中一個確切檔案路徑"},
+                "title": {"type": "STRING", "description": "顯示用的標題，簡短（選填）"}
+            },
+            "required": ["file"]
         }
     }]
 }]
@@ -472,8 +488,35 @@ class LiveSession:
                     except Exception as e:
                         msg = f"秀上畫面失敗：{e!r}"
                 responses.append({"id": fc_id, "name": name, "response": {"result": msg}})
+            elif name == "list_models":
+                if _list_models is None:
+                    msg = "沒接上 board，看不到有哪些模型。"
+                else:
+                    try:
+                        files = _list_models()
+                        msg = ("目前可召喚的模型：" + "、".join(files)) if files \
+                              else "media 資料夾裡目前沒有任何 .glb/.gltf 模型檔。"
+                    except Exception as e:
+                        msg = f"列模型失敗：{e!r}"
+                responses.append({"id": fc_id, "name": name, "response": {"result": msg}})
+            elif name == "summon_model":
+                file = str(args.get("file", "")).strip()
+                title = str(args.get("title", "")).strip() or file
+                if _queue_cmd is None or _resolve_media_src is None:
+                    msg = "board 沒有連上，召喚不出來。"
+                elif not file:
+                    msg = "沒有指定要召喚哪個模型檔。"
+                else:
+                    try:
+                        src = _resolve_media_src(file)
+                        _queue_cmd({"a": "present", "src": src, "title": title})
+                        msg = f"「{title}」已經召喚到畫面中央了。"
+                        self.on_status(f"🔮 召喚模型：「{title}」")
+                    except Exception as e:
+                        msg = f"找不到這個模型檔，或不在允許的資料夾裡：{e!r}"
+                responses.append({"id": fc_id, "name": name, "response": {"result": msg}})
             else:
-                # Only the two tools above are registered in TOOLS -- an
+                # Only the tools above are registered in TOOLS -- an
                 # unknown call shouldn't be able to happen, but fail
                 # closed if it does rather than silently drop it.
                 responses.append({"id": fc_id, "name": name,
@@ -658,10 +701,12 @@ def _wake_loop_main():
         print(f"回待機——喊「{config.WAKE_HINT}」再次喚醒。", flush=True)
 
 
-_queue_cmd = None  # set by start_assistant_thread(); see show_on_board in handle_tool_calls
+_queue_cmd = None          # set by start_assistant_thread(); see show_on_board
+_resolve_media_src = None  # set by start_assistant_thread(); see summon_model
+_list_models = None        # set by start_assistant_thread(); see list_models
 
 
-def start_assistant_thread(queue_cmd=None):
+def start_assistant_thread(queue_cmd=None, resolve_media_src=None, list_models=None):
     """Start the wake-word/conversation loop as a background daemon
     thread. Safe to call from server.py's __main__: if dependencies or
     credentials are missing, this prints a message and returns without
@@ -670,9 +715,18 @@ def start_assistant_thread(queue_cmd=None):
     queue_cmd: optional callable(cmd: dict) that appends a board command
     directly into server.py's in-process _CMDS queue -- same process, so
     no HTTP round-trip to /cmd is needed. Without it, show_on_board just
-    reports it can't reach the board instead of raising."""
-    global _queue_cmd
+    reports it can't reach the board instead of raising.
+
+    resolve_media_src / list_models: optional callables from server.py
+    (resolve_media_src(src) -> "/media/..." URL, raises if outside the
+    media jail; list_models() -> list of .glb/.gltf paths) -- used by
+    summon_model. The assistant runs in-process now, so it must still
+    go through the same media-jail validation the HTTP /cmd path uses,
+    not skip it just because there's no network hop."""
+    global _queue_cmd, _resolve_media_src, _list_models
     _queue_cmd = queue_cmd
+    _resolve_media_src = resolve_media_src
+    _list_models = list_models
     t = threading.Thread(target=_wake_loop_main, daemon=True, name="jarvis-assistant")
     t.start()
     return t

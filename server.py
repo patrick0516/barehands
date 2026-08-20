@@ -96,6 +96,47 @@ _ALLOWED = ("add_img", "add_card", "clear", "reset", "hand", "give",
             "present")
 
 
+def resolve_media_src(src):
+    """THE AIRLOCK: only files really inside ./media/ ever stage —
+    subfolders allowed, escapes raise. If the exact path misses, a
+    UNIQUE basename match anywhere inside the airlock self-heals a
+    wrong-folder guess; zero or many matches still raise.
+
+    Shared by the HTTP /cmd handler and the in-process voice assistant
+    (assistant/voice.py's summon_model) -- the assistant bypasses HTTP
+    entirely (same process), so it must still go through this jail
+    rather than queuing an unvalidated `src` straight into _CMDS."""
+    rel = str(src or "").lstrip("/")
+    if rel.startswith("media/"):
+        rel = rel[6:]
+    media = (HERE / "media").resolve()
+    target = (media / rel).resolve()
+    if media not in target.parents or not target.is_file():
+        name = Path(rel).name.lower()
+        hits = [p for p in media.rglob("*")
+                if p.is_file() and p.name.lower() == name] if name else []
+        if len(hits) != 1:
+            raise ValueError("not in the media airlock")
+        target = hits[0]
+    return "/media/" + target.relative_to(media).as_posix()
+
+
+def list_media_models():
+    """Every .glb/.gltf under ./media/ (models/, holo/, or anywhere
+    else in the airlock), as media-relative paths -- what the voice
+    assistant's summon_model tool has to pick from. Files under holo/
+    render as the blue wireframe hologram automatically (stage.html's
+    own modelModeFor()); this just reports what's on disk, no
+    holo/normal distinction of its own."""
+    media = (HERE / "media").resolve()
+    if not media.is_dir():
+        return []
+    return sorted(
+        p.relative_to(media).as_posix()
+        for p in media.rglob("*")
+        if p.is_file() and p.suffix.lower() in (".glb", ".gltf"))
+
+
 class Handler(SimpleHTTPRequestHandler):
     def end_headers(self):
         # no-store on the page itself so a plain reload always serves
@@ -139,25 +180,7 @@ class Handler(SimpleHTTPRequestHandler):
                 cmd = json.loads(body)
                 assert cmd.get("a") in _ALLOWED
                 if cmd["a"] in ("add_img", "hand", "give", "present") and cmd.get("src"):
-                    # THE AIRLOCK: only files really inside ./media/ ever
-                    # stage — subfolders allowed, escapes 400. If the
-                    # exact path misses, a UNIQUE basename match anywhere
-                    # inside the airlock self-heals a wrong-folder guess;
-                    # zero or many matches still 400.
-                    rel = str(cmd.get("src", "")).lstrip("/")
-                    if rel.startswith("media/"):
-                        rel = rel[6:]
-                    media = (HERE / "media").resolve()
-                    target = (media / rel).resolve()
-                    if media not in target.parents or not target.is_file():
-                        name = Path(rel).name.lower()
-                        hits = [p for p in media.rglob("*")
-                                if p.is_file()
-                                and p.name.lower() == name] if name else []
-                        if len(hits) != 1:
-                            raise ValueError("not in the media airlock")
-                        target = hits[0]
-                    cmd["src"] = "/media/" + target.relative_to(media).as_posix()
+                    cmd["src"] = resolve_media_src(cmd["src"])
                 _CMDS.append(cmd)
                 self.send_response(204)
             except Exception:
@@ -309,7 +332,9 @@ def _start_assistant():
               f"run `pip install -r requirements.txt` to enable it; "
               f"board still works without it)", flush=True)
         return
-    start_assistant_thread(queue_cmd=_CMDS.append)
+    start_assistant_thread(queue_cmd=_CMDS.append,
+                            resolve_media_src=resolve_media_src,
+                            list_models=list_media_models)
 
 
 if __name__ == "__main__":
