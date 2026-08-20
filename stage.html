@@ -74,7 +74,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
      low-alpha smoked fills you genuinely see through, one luminous
      edge, a specular kiss on top. No wireframe chrome; restraint IS
      the aesthetic. Readability rides halo text, not slab fills. */
-  .card { position:absolute; width:480px; padding:22px 24px; border-radius:16px;
+  .card { position:absolute; width:600px; padding:18px 22px; border-radius:16px;
           background:linear-gradient(168deg, rgba(70,140,130,0.30), rgba(18,48,44,0.18));
           border:1.5px solid rgba(140,240,225,0.55);
           box-shadow:0 10px 44px rgba(0,0,0,0.40), 0 0 26px rgba(111,229,214,0.14),
@@ -189,27 +189,30 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   @keyframes rowflash {
     from { background:rgba(140,240,225,0.4); }
     to   { background:transparent; } }
-  .card p  { margin:0; font-size:17px; line-height:1.45; color:#dcf5ee; text-shadow:0 1px 3px rgba(3,18,16,0.55); }
+  .card p  { margin:0; font-size:17px; line-height:1.45; color:#dcf5ee; text-shadow:0 1px 3px rgba(3,18,16,0.55);
+             white-space:pre-wrap; word-break:break-word; max-height:52vh; overflow-y:auto; }
+  .card p .h { display:block; margin:10px 0 4px; font-size:14px; letter-spacing:.06em;
+               color:#8ff0e4; text-transform:uppercase; font-family:"SF Mono",Menlo,monospace; }
   .card p:empty { display:none; }
   .card.grabbed, .panel.grabbed { border-color:#8ff0e4;
           box-shadow:0 12px 60px rgba(0,0,0,0.7), 0 0 44px rgba(111,229,214,0.35); }
   /* v20.4: FIXED px (the 44vw×70vh of a 1920×1080 OBS canvas) so tracker
      and render wrap text identically — same content height on both sides
      makes the fractional scroll a true 1:1 (hand speed = on-air speed) */
-  .panel { position:absolute; width:845px; height:756px; border-radius:18px;
+  .panel { position:absolute; width:980px; height:820px; border-radius:18px;
            background:linear-gradient(172deg, rgba(52,108,100,0.36), rgba(14,40,36,0.24));
            border:1.5px solid rgba(140,240,225,0.6); color:#ecfffa;
            box-shadow:0 16px 70px rgba(0,0,0,0.5), 0 0 50px rgba(111,229,214,0.16),
                       inset 0 1px 0 rgba(210,255,248,0.55);
            display:flex; flex-direction:column; will-change:transform; }
-  .panel .bar { padding:42px 16px; border-bottom:1px solid rgba(111,229,214,0.3);   /* v3.8: THE GRIP BAR everywhere — notes + folders (grab = move, tap = close) */
+  .panel .bar { padding:28px 18px; border-bottom:1px solid rgba(111,229,214,0.3);   /* v3.8: THE GRIP BAR everywhere — notes + folders (grab = move, tap = close) */
                 display:flex; justify-content:space-between; align-items:center; }
   .panel .bar h3 { margin:0; font-size:14px; color:#8ff0e4; letter-spacing:0.08em;
                    font-family:"SF Mono",Menlo,monospace; text-transform:uppercase; }
   .panel .close { width:30px; height:30px; border-radius:50%; text-align:center;
                   line-height:28px; border:1.5px solid rgba(111,229,214,0.65);
                   color:#8ff0e4; font-size:15px; }
-  .panel .body { flex:1; overflow:hidden; padding:14px 20px; }
+  .panel .body { flex:1; overflow:hidden; padding:12px 18px; }
   .panel .scroll { transition:none; font-size:14.5px; line-height:1.5; color:#dcf5ee; text-shadow:0 1px 3px rgba(3,18,16,0.55);
                    white-space:pre-wrap; font-family:-apple-system,sans-serif; }
   .panel .scroll b { color:#fff; } .panel .scroll .h { color:#8ff0e4; font-weight:700; }
@@ -388,7 +391,13 @@ let UID = 1;
 function makeCard(def) {
   const el = document.createElement("div");
   el.className = "card";
-  el.innerHTML = `<h3>${escT(def.title)}</h3><p>${escT(def.body || "")}</p>`;
+  // renderNote() (the notes-panel renderer: escapes HTML, styles "# "
+  // headers and **bold**, joins lines with real \n) instead of a bare
+  // escT() -- cards fed multi-line/structured text (show_on_board's AI
+  // summaries in particular) were losing their line breaks entirely,
+  // since raw HTML collapses \n with no white-space:pre-wrap. Field-
+  // caught 2026-08-21: "排版問題...沒辦法顯示工整或完整".
+  el.innerHTML = `<h3>${escT(def.title)}</h3><p>${renderNote(def.body || "")}</p>`;
   BEHIND.appendChild(el);
   return { el, id: UID++, type: "card", def, x: 0, y: 0, scale: 1, vx: 0, vy: 0,
            grabbedBy: [], ox: 0, oy: 0, flying: false, stretch: null, desktop: activeDesktop };
