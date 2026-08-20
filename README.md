@@ -1,5 +1,7 @@
 # barehands
 
+> **Fork Notice:** This is a modified fork of [jaredrhod/barehands](https://github.com/jaredrhod/barehands) by [Jared Rhodenizer](https://github.com/jaredrhod). Original project licensed under AGPL-3.0. We are making modifications for our own use case. All credit to the original author.
+
 > **Never used Claude Code?** Start at [jaredrhod.com](https://jaredrhod.com): pick your situation and it routes you to the right path.
 
 **Runs on:** a webcam and Chrome; works with any AI. Any program that writes a file or curls localhost can be its brain.
