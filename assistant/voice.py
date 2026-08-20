@@ -37,6 +37,7 @@ import time
 import traceback
 import urllib.parse
 import urllib.request
+from pathlib import Path
 
 import numpy as np
 import sounddevice as sd
@@ -106,7 +107,7 @@ SYS = """你是 Sadie——Chou 老大的 JARVIS 式駐守助理。你是冷靜�
 3. 老大要求「動手做事」（記事、查/寫檔案、研究、上網查資料、整理筆記、設定等）-> 呼叫 run_opencode 工具，把任務寫成一句清楚的繁體中文指令；需要查網路資料就直接在指令裡寫清楚要查什麼，opencode 自己會上網。呼叫前先用一句話口頭說一下你要處理了（例如「我來處理一下」「稍等，我看看」），不要憑空沉默——這句話跟呼叫工具算同一輪，講完立刻呼叫，不用等回覆。
 4. 工具結果回來後，用 2~3 句口語轉述重點給老大。如果結果是查資料/研究類的內容（不是單純的「已完成」這種動作回報），額外呼叫 show_on_board 把整理過的重點秀在畫面上，老大自己問「幫我查/搜尋/看一下」這類要求時尤其要秀出來，不要只用講的。
 5. 老大明確說「秀出來/顯示在畫面上/放到板子上」時，直接呼叫 show_on_board，不用等 run_opencode。
-6. 老大要你召喚/顯示一個 3D 模型時 -> 先呼叫 list_models 看有哪些檔案可選，再呼叫 summon_model，file 參數要用 list_models 回傳的確切路徑，不要自己編檔名。如果 list_models 是空的，老實跟老大說目前沒有模型檔可以召喚，不要假裝有。
+6. 老大要你召喚/顯示一個 3D 模型時 -> 先呼叫 list_models 看有哪些檔案可選，再呼叫 summon_model，file 參數要用 list_models 回傳的確切路徑，不要自己編檔名。如果 list_models 是空的，老實跟老大說目前沒有模型檔可以召喚，不要假裝有。老大說要「炸開/分解」目前畫面上的模型 -> explode_model；「組回去」-> assemble_model；「展示所有模型/放個展覽」-> show_model_gallery。
 7. 老大說「掰掰/結束/晚安」等 -> 簡短道別後，不要再多話。
 8. 紅線確認（執行前必須先口頭問老大，等明確同意才動手）：會花錢的、會對外發布的、刪除檔案/移除東西、觸及權限/帳號/不可回復的操作。問法要簡短：「這會刪掉 X，確定嗎？」老大說好才做。其他操作直接做，不要每件事都問。"""
 
@@ -148,6 +149,18 @@ TOOLS = [{
             },
             "required": ["file"]
         }
+    }, {
+        "name": "explode_model",
+        "description": "把目前畫面上正在展示的 3D 模型炸開成分解視圖（爆炸圖）。老大說「炸開/分解/拆開這個模型」時呼叫。",
+        "parameters": {"type": "OBJECT", "properties": {}}
+    }, {
+        "name": "assemble_model",
+        "description": "把已經炸開的 3D 模型組回原狀。老大說「組回去/還原/合起來」時呼叫。",
+        "parameters": {"type": "OBJECT", "properties": {}}
+    }, {
+        "name": "show_model_gallery",
+        "description": "依序召喚所有可用的 3D 模型，每個之間停留幾秒，像個小型展覽。老大說「展示所有模型/放個展覽/秀一輪模型」時呼叫。",
+        "parameters": {"type": "OBJECT", "properties": {}}
     }]
 }]
 
@@ -549,6 +562,37 @@ class LiveSession:
                         self.on_status(f"🔮 召喚模型：「{title}」")
                     except Exception as e:
                         msg = f"找不到這個模型檔，或不在允許的資料夾裡：{e!r}"
+                responses.append({"id": fc_id, "name": name, "response": {"result": msg}})
+            elif name in ("explode_model", "assemble_model"):
+                # Reuses stage.html's existing explode/assemble board
+                # actions verbatim -- these already work via the CLAW/
+                # explode-scrub gesture, this just gives the assistant
+                # the same verb. No board changes needed for this pair.
+                if _queue_cmd is None:
+                    msg = "board 沒有連上。"
+                else:
+                    _queue_cmd({"a": "explode" if name == "explode_model" else "assemble"})
+                    msg = "炸開了。" if name == "explode_model" else "組回去了。"
+                    self.on_status("💥 " + msg)
+                responses.append({"id": fc_id, "name": name, "response": {"result": msg}})
+            elif name == "show_model_gallery":
+                if _queue_cmd is None or _resolve_media_src is None or _list_models is None:
+                    msg = "board 沒有連上，辦不了展覽。"
+                else:
+                    files = _list_models()
+                    if not files:
+                        msg = "media 資料夾裡沒有任何模型檔，沒東西可以展覽。"
+                    else:
+                        self.on_status(f"🖼 開始模型展覽（{len(files)} 件）")
+                        for f in files:
+                            try:
+                                src = _resolve_media_src(f)
+                            except Exception:
+                                continue
+                            title = Path(f).stem
+                            _queue_cmd({"a": "present", "src": src, "title": title})
+                            await asyncio.sleep(2.5)
+                        msg = f"展覽結束，總共秀了 {len(files)} 件。"
                 responses.append({"id": fc_id, "name": name, "response": {"result": msg}})
             else:
                 # Only the tools above are registered in TOOLS -- an
