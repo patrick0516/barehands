@@ -226,6 +226,19 @@ SPDX-License-Identifier: AGPL-3.0-or-later
           color:rgba(230,255,240,0.7); font-size:13.5px; z-index:998;
           text-shadow:0 1px 6px rgba(0,0,0,0.8); }
   body.overlay #hint, body.greenkey #hint { display:none; }
+  /* MULTI-DESKTOP (TASK-0004): a small dot row, one per nearby desktop,
+     the active one ringed. Purely informational -- swipe still works
+     without ever looking at it. */
+  #desktopDots { position:absolute; bottom:40px; left:0; right:0;
+                 display:flex; justify-content:center; gap:8px; z-index:998;
+                 pointer-events:none; }
+  #desktopDots .dd { width:7px; height:7px; border-radius:50%;
+                      background:rgba(230,255,240,0.18);
+                      box-shadow:0 1px 4px rgba(0,0,0,0.6); transition:background .2s; }
+  #desktopDots .dd.has { background:rgba(230,255,240,0.45); }
+  #desktopDots .dd.on { background:#6fe3c9;
+                         box-shadow:0 0 8px 2px rgba(111,227,201,0.7); }
+  body.overlay #desktopDots, body.greenkey #desktopDots { display:none; }
   #debug { position:absolute; top:12px; left:12px; z-index:998; display:none;
            background:rgba(0,0,0,0.65); color:#8ff0e4; padding:10px 12px;
            border-radius:8px; font:12px "SF Mono",Menlo,monospace; white-space:pre; }
@@ -285,9 +298,10 @@ setTimeout(function () {
 <video id="cam" autoplay playsinline muted></video>
 <div id="behind"></div>
 <div id="boot">JARVIS<br><span style="color:#a8d8cf;font-size:12px;letter-spacing:0.22em">fork of barehands, by jaredrhod</span><br><span style="color:#a8d8cf;font-size:13px">loading hand tracker… allow the camera when asked</span></div>
-<div id="hint">tap the RING = orbs · tap an orb = its tree · TAP a card = open · pinch-drag = move · hold still ~1s = 3D rotate · two hands = scale · TAP an open item = close · CLAP (palms together, fingers up) = ring center-stage · CLAW: flash open, claw, aim, hold the strain 2s, SNAP = force pull · empty pinch dragged sideways = explode scrub · R respawn / C camera / D debug</div>
+<div id="hint">tap the RING = orbs · tap an orb = its tree · TAP a card = open · pinch-drag = move · hold still ~1s = 3D rotate · two hands = scale · TAP an open item = close · CLAP (palms together, fingers up) = ring center-stage · CLAW: flash open, claw, aim, hold the strain 2s, SNAP = force pull · empty pinch dragged sideways = explode scrub · open-hand swipe = switch desktop · R respawn / C camera / D debug</div>
 <div id="debug"></div>
 <div id="toast"></div>
+<div id="desktopDots"></div>
 
 <script type="module">
 import { HandLandmarker, FilesetResolver } from
@@ -336,6 +350,13 @@ const cam = document.getElementById("cam");
 const BEHIND = document.getElementById("behind");
 const dbg = document.getElementById("debug");
 let items = [];        // cards + panels: {el,type,x,y,scale,vx,vy,grabbedBy:[],ox,oy,flying,file,stretch,scrollY,body}
+// MULTI-DESKTOP (TASK-0004): cards/images/models/panels carry a `desktop`
+// index, defaulting to whichever desktop was active when they were
+// created. THE RING and orbs never get a `desktop` field, so they stay
+// visible on every desktop -- see the desktop-visibility check in
+// physics(). Swiping (see the swipe gate in frame()) changes
+// activeDesktop; desktops are created on demand, no fixed count.
+let activeDesktop = 0;
 let cursors = {};
 let SAMPLER = null;    // the pose sampler (dormant — claw/pinch tuning)
 let CLAPSAMP = null;   // the P clap recorder (v3.9.1)
@@ -350,7 +371,7 @@ function makeCard(def) {
   el.innerHTML = `<h3>${escT(def.title)}</h3><p>${escT(def.body || "")}</p>`;
   BEHIND.appendChild(el);
   return { el, id: UID++, type: "card", def, x: 0, y: 0, scale: 1, vx: 0, vy: 0,
-           grabbedBy: [], ox: 0, oy: 0, flying: false, stretch: null };
+           grabbedBy: [], ox: 0, oy: 0, flying: false, stretch: null, desktop: activeDesktop };
 }
 
 // ---- FOLEY (2026-08-07): synthesized WebAudio — the objects make SOUND,
@@ -424,7 +445,7 @@ function makeImage(src, title) {
            def: { title: title || "", file: "", src,
                   fx: fx || vid ? 1 : 0, vid: vid ? 1 : 0 },
            x: innerWidth * 0.5, y: innerHeight * 0.42, scale: 1, vx: 0, vy: 0,
-           grabbedBy: [], ox: 0, oy: 0, flying: false, stretch: null };
+           grabbedBy: [], ox: 0, oy: 0, flying: false, stretch: null, desktop: activeDesktop };
 }
 
 function summonWidget(w) {
@@ -1086,7 +1107,7 @@ function makeModel(src, title, mode, lift) {
     def: { title: title || "", file: "", src, mmode: mm, lift },
     x: innerWidth * 0.5, y: innerHeight * 0.42, scale: 1,
     rx: -0.15, ry: 0.6, rz: 0, rvy: 0, vx: 0, vy: 0,
-    grabbedBy: [], ox: 0, oy: 0, flying: false, stretch: null };
+    grabbedBy: [], ox: 0, oy: 0, flying: false, stretch: null, desktop: activeDesktop };
   buildModelScene(el, src, mm, lift).then(sc => {
     if (sc) {
       sc.it = it; MSCENES.set(it.id, sc);
@@ -1360,6 +1381,7 @@ function spawnStage(cx = 0.30, cy = 0.45) {
   items.forEach(killItem);
   const ring = makeRing();
   ring.x = innerWidth * cx; ring.y = innerHeight * cy;
+  updateDesktopDots();
 }
 
 // ---- THE BROWSER PANES (shelf v3): one pane per kind, an indented
@@ -1508,7 +1530,7 @@ async function openPanel(card) {
   const p = { el, id: UID++, type: "panel", def: card.def, x: innerWidth * 0.5,
               y: innerHeight * 0.44, scale: 1, vx: 0, vy: 0, grabbedBy: [],
               ox: 0, oy: 0, flying: false, stretch: null, scrollY: 0,
-              body: el.querySelector(".scroll") };
+              body: el.querySelector(".scroll"), desktop: card.desktop ?? activeDesktop };
   items.push(p);
 }
 
@@ -1518,6 +1540,22 @@ function toast(msg, ms = 2500) {
   t.style.display = "block";
   clearTimeout(t._h);
   t._h = setTimeout(() => t.style.display = "none", ms);
+}
+
+// MULTI-DESKTOP (TASK-0004): redraw the dot row -- a fixed window of 5
+// desktop indices centered on activeDesktop, filled if that desktop has
+// any real item (not the ring/orbs), ringed if it's the active one.
+function updateDesktopDots() {
+  const el = document.getElementById("desktopDots");
+  if (!el) return;
+  const populated = new Set(items.filter(c => c.desktop != null).map(c => c.desktop));
+  el.innerHTML = "";
+  for (let d = activeDesktop - 2; d <= activeDesktop + 2; d++) {
+    const dot = document.createElement("div");
+    dot.className = "dd" + (populated.has(d) ? " has" : "") +
+                     (d === activeDesktop ? " on" : "");
+    el.appendChild(dot);
+  }
 }
 
 // ---- camera selection: ?cam=<label substring> > saved choice > default.
@@ -1603,6 +1641,7 @@ function toScreen(lm) {
 }
 
 let lastClearT = 0, lastResetT = 0;   // clear/reset cooldowns (wipe + clap)
+let lastDesktopSwitchT = 0;           // desktop-swipe cooldown (TASK-0004)
 const clap = { hist: [] };            // inter-hand distance samples (v3)
 
 function getCursor(i) {
@@ -1887,6 +1926,16 @@ function physics(dt) {
   if (presented && (!presented.el.isConnected || presented.grabbedBy.length))
     endPresent();
   items.forEach(c => {
+    // MULTI-DESKTOP (TASK-0004): items on a desktop other than the
+    // active one just sit hidden, frozen, retaining state -- no anim/
+    // physics ticks while off-desktop, resumes when swiped back. THE
+    // RING and orbs never get a `desktop` field (see the comment by
+    // `let activeDesktop`), so this never touches them.
+    if (c.desktop != null && c.desktop !== activeDesktop) {
+      if (c.el.style.display !== "none") c.el.style.display = "none";
+      return;
+    }
+    if (c.el.style.display === "none") c.el.style.display = "";
     if (c.anim) {                     // the assistant's agency animations
       const a = c.anim; a.t += dt;
       if (a.k === "in") {             // THE MATERIALIZE (GLASS ERA):
@@ -2217,6 +2266,35 @@ async function boot() {
         const palmOpen = extFingers >= 4 && ratio > 0.8;
         cur.palmOpen = palmOpen;
         cur.softOpen = extFingers >= 3 && ratio > 0.7;  // the forgiving open read
+
+        // ---- MULTI-DESKTOP (TASK-0004): an open, unpinched, empty
+        // hand doing a fast horizontal swipe switches the active
+        // desktop. The PALM ENGINE comment above claims this gesture
+        // slot ("CLOSE = open-hand swipe") but nothing in this file
+        // ever implemented it (closing is TAP-based elsewhere) -- this
+        // is genuinely unclaimed gesture space, confirmed by grep
+        // before writing this. FIRST-PASS THRESHOLDS ONLY: 1600px/s and
+        // a 2:1 horizontal-over-vertical ratio are a code guess, not
+        // fitted from a real hand -- run this through the D/P TUNING
+        // CLINIC against a real sample before trusting it, same as any
+        // other gate in this file (see TROUBLESHOOTING.md).
+        if (!cur.pinched && !holdingI && cur.history.length >= 2) {
+          const sh = cur.history, s0 = sh[0], s1 = sh[sh.length - 1];
+          const sdt = (s1.t - s0.t) / 1000;
+          if (sdt > 0) {
+            const sdx = s1.x - s0.x, sdy = s1.y - s0.y;
+            const sspd = Math.hypot(sdx, sdy) / sdt;
+            if (Math.abs(sdx) > Math.abs(sdy) * 2 && sspd > 1600 &&
+                now - lastDesktopSwitchT > 700) {
+              activeDesktop += sdx > 0 ? 1 : -1;
+              lastDesktopSwitchT = now;
+              cur.history.length = 0;   // don't re-trigger off the same swipe
+              toast(`desktop ${activeDesktop}`, 900);
+              foley.throw_();
+              updateDesktopDots();
+            }
+          }
+        }
 
         if (cur.pinched && !wasPinched) {
           cur.pinchT = now;
