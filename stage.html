@@ -315,7 +315,7 @@ setTimeout(function () {
 <video id="cam" autoplay playsinline muted></video>
 <div id="behind"></div>
 <div id="boot">JARVIS<br><span style="color:#a8d8cf;font-size:12px;letter-spacing:0.22em">fork of barehands, by jaredrhod</span><br><span style="color:#a8d8cf;font-size:13px">loading hand tracker… allow the camera when asked</span></div>
-<div id="hint">tap the RING = orbs · tap an orb = its tree · TAP a card = open · pinch-drag = move · hold still ~1s = 3D rotate · two hands = scale · TAP an open item = close · CLAP (palms together, fingers up) = ring center-stage · CLAW: flash open, claw, aim, hold the strain 2s, SNAP = force pull · empty pinch dragged sideways = explode scrub · open-hand swipe = switch desktop · R respawn / C camera / D debug / S sleep-wake assistant / ←→ switch desktop</div>
+<div id="hint">tap the RING = orbs · tap an orb = its tree · TAP a card = open · pinch-drag = move · hold still ~1s = 3D rotate · two hands = scale · TAP an open item = close · CLAP (palms together, fingers up) = ring center-stage · CLAW: flash open, claw, aim, hold the strain 2s, SNAP = force pull · empty pinch dragged sideways = explode scrub · open-hand swipe = switch desktop · drag a card to the screen edge = send it to the next desktop, throw hard = delete it · R respawn / C camera / D debug / S sleep-wake assistant / ←→ switch desktop</div>
 <div id="debug"></div>
 <div id="toast"></div>
 <div id="desktopDots"></div>
@@ -1961,6 +1961,27 @@ function endGrab(c, i, cur) {
             c.vx = vx; c.vy = vy; c.flying = true; flung = true;
           }
         }
+      }
+    }
+    // MULTI-DESKTOP (TASK-0004 follow-up, user request 2026-08-21): "I
+    // want it to be able to delete AND drag to the edge [to switch
+    // desktops]" -- a hard FLING still deletes (untouched, existing
+    // behavior via c.flying + physics()'s off-bounds cleanup below); a
+    // GENTLE release near the screen edge instead hands the item to
+    // the adjacent desktop rather than leaving it stranded half
+    // off-screen. Only items that actually belong to a desktop
+    // (cards/images/models/panels) are eligible -- the ring/orbs/
+    // browser panes never get a `desktop` field, so this can't touch
+    // them.
+    if (!flung && c.desktop != null) {
+      const EDGE = 70;
+      if (c.x < EDGE || c.x > innerWidth - EDGE) {
+        const goingRight = c.x > innerWidth - EDGE;
+        c.desktop += goingRight ? 1 : -1;
+        c.x = innerWidth * (goingRight ? 0.15 : 0.85);  // arrives from the side you sent it off
+        toast(`→ desktop ${c.desktop}`, 900);
+        foley.yank();
+        updateDesktopDots();
       }
     }
     // foley: cards/images only (panels silent), and quick taps don't thup
