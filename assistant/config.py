@@ -80,7 +80,12 @@ OPENCODE = _find_opencode()
 WORKDIR = os.environ.get("SADIE_WORKDIR", str(Path.home() / ".jarvis-assistant"))
 
 LIVE_MODEL = os.environ.get("GEMINI_LIVE_MODEL", "gemini-3.1-flash-live-preview")
-VOICE = os.environ.get("SADIE_VOICE", "Kore")
+VOICE = os.environ.get("SADIE_VOICE", "Charon")  # male voice, fits the
+# JARVIS persona -- confirmed by actually sampling Gemini Live audio and
+# measuring pitch (median F0), not guessed: Charon ~117Hz and Puck
+# ~126Hz read as male range, Kore ~195Hz / Orus ~190Hz / Fenrir ~218Hz
+# read as female range (typical adult male speech is roughly 85-180Hz,
+# female roughly 165-255Hz). See DECISIONS.md 2026-08-21.
 MIC_INDEX = os.environ.get("SADIE_MIC")          # None = system default input
 OUT_DEVICE = os.environ.get("SADIE_OUT")          # None = system default output
 PLAY_GAIN = float(os.environ.get("SADIE_VOLUME", "1.5"))

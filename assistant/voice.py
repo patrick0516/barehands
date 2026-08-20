@@ -63,6 +63,41 @@ MAX_TURNS = 20
 
 BG_LOCK = threading.Lock()  # background opencode tasks are serialized
 
+# ---- manual sleep/wake, driven from stage.html (S key / the sleep
+# button) via server.py's /assistant/sleep and /assistant/wake -- see
+# _wake_loop_main() for where _SLEEPING is checked and sleep_assistant()/
+# wake_assistant() below for how the browser controls it.
+_SLEEPING = threading.Event()
+ACTIVE_SESSION = [None]  # the live LiveSession, if a conversation is in
+                         # progress -- sleep_assistant() ends it early
+_LISTENER = [None]       # the live WakewordListener -- sleep_assistant()
+                         # calls .stop() on it so a currently-blocking
+                         # listen() call returns immediately instead of
+                         # only taking effect after the next wake
+
+
+def is_sleeping():
+    return _SLEEPING.is_set()
+
+
+def sleep_assistant():
+    """Stop listening for the wake word, and end any conversation
+    that's live right now. The wake-word loop's InputStream only opens
+    while actively listening, so sleeping also releases the mic."""
+    _SLEEPING.set()
+    listener = _LISTENER[0]
+    if listener is not None:
+        listener.stop()   # interrupts a currently-blocking listen() call
+    sess = ACTIVE_SESSION[0]
+    if sess is not None:
+        sess.exit_evt.set()
+    return True
+
+
+def wake_assistant():
+    _SLEEPING.clear()
+    return True
+
 SYS = """你是 Sadie——Chou 老大的 JARVIS 式駐守助理。你是冷靜沉穩、聰明俐落、忠誠直接的夥伴，帶一點 JARVIS 式冷幽默但絕不油膩；全程用繁體中文、口語，簡短直接、先講重點。
 
 規則：
@@ -543,6 +578,7 @@ class LiveSession:
             print("❌ 沒有 Gemini 憑證。請設定環境變數 GEMINI_API_KEY。", flush=True)
             return "no-key"
 
+        ACTIVE_SESSION[0] = self
         try:
             self.on_status("⏳ 連線 Gemini Live…")
             self._face("thinking")
@@ -623,6 +659,8 @@ class LiveSession:
             self.session_open = False
             self.clear_playback()
             self._face("idle")
+            if ACTIVE_SESSION[0] is self:
+                ACTIVE_SESSION[0] = None
             try:
                 await ws.close()
             except Exception:
@@ -680,7 +718,18 @@ def _wake_loop_main():
     print(f"待機中——喊「{config.WAKE_HINT}」喚醒。", flush=True)
     listener = WakewordListener(WAKE_MODEL,
                                 device=int(MIC_INDEX) if MIC_INDEX is not None else None)
+    _LISTENER[0] = listener
+    was_sleeping = False
     while True:
+        if _SLEEPING.is_set():
+            if not was_sleeping:
+                print("😴 已暫停，麥克風已釋放（在網頁上按喚醒才能恢復——睡著就是真的聽不到）", flush=True)
+                was_sleeping = True
+            time.sleep(0.3)
+            continue
+        if was_sleeping:
+            print(f"⏰ 已恢復——喊「{config.WAKE_HINT}」喚醒。", flush=True)
+            was_sleeping = False
         try:
             word = listener.listen()
         except Exception as e:

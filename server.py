@@ -164,6 +164,19 @@ class Handler(SimpleHTTPRequestHandler):
         global _STATE
         n = int(self.headers.get("Content-Length", 0) or 0)
         body = self.rfile.read(n) if 0 < n < 262144 else b"{}"
+        if self.path in ("/assistant/sleep", "/assistant/wake"):
+            # manual override for the voice assistant, from the S key /
+            # the sleep button in stage.html -- doesn't touch the board
+            # at all, just tells the wake-word loop to stop listening
+            # (sleep, also ends any live conversation) or resume
+            # (wake). 204 either way if there's no assistant running;
+            # nothing to toggle isn't an error.
+            if _ASSISTANT:
+                (_ASSISTANT.sleep_assistant if self.path.endswith("sleep")
+                 else _ASSISTANT.wake_assistant)()
+            self.send_response(204)
+            self.end_headers()
+            return
         if self.path == "/state":
             # the tracker's heartbeat doubles as the command channel
             _STATE = body
@@ -283,6 +296,8 @@ class Handler(SimpleHTTPRequestHandler):
                         out["wave"] = w.get("samples", [])[:64]
                 except Exception:
                     pass
+            out["sleeping"] = bool(_ASSISTANT and _ASSISTANT.is_sleeping())
+            out["assistant"] = _ASSISTANT is not None
             self._json(out)
             return
         if self.path == "/state":
@@ -319,22 +334,29 @@ class Handler(SimpleHTTPRequestHandler):
         self.wfile.write(body)
 
 
+_ASSISTANT = None  # the assistant.voice module, once started; used by
+                   # /assistant/sleep, /assistant/wake, and /orb's
+                   # "sleeping" field. None if it never started.
+
+
 def _start_assistant():
     """Best-effort start of the built-in voice assistant (assistant/).
     Never allowed to take the board server down with it: missing
     dependencies (numpy/sounddevice/vosk/websockets aren't installed) or
     missing setup (no wake-word model, no GEMINI_API_KEY) just print a
     message and leave the board running camera/gesture-only."""
+    global _ASSISTANT
     try:
-        from assistant.voice import start_assistant_thread
+        from assistant import voice
     except Exception as e:
         print(f"(voice assistant not started: {e!r} -- "
               f"run `pip install -r requirements.txt` to enable it; "
               f"board still works without it)", flush=True)
         return
-    start_assistant_thread(queue_cmd=_CMDS.append,
-                            resolve_media_src=resolve_media_src,
-                            list_models=list_media_models)
+    voice.start_assistant_thread(queue_cmd=_CMDS.append,
+                                  resolve_media_src=resolve_media_src,
+                                  list_models=list_media_models)
+    _ASSISTANT = voice
 
 
 if __name__ == "__main__":

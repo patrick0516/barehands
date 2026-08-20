@@ -239,6 +239,21 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   #desktopDots .dd.on { background:#6fe3c9;
                          box-shadow:0 0 8px 2px rgba(111,227,201,0.7); }
   body.overlay #desktopDots, body.greenkey #desktopDots { display:none; }
+  /* ASSISTANT SLEEP/WAKE: a small clickable icon, top-right. Hidden
+     entirely (see the setInterval poll below) unless the assistant is
+     actually running -- no point offering a control for something that
+     was never started. */
+  #sleepBtn { position:absolute; top:14px; right:14px; z-index:999;
+              width:34px; height:34px; border-radius:50%; cursor:pointer;
+              display:flex; align-items:center; justify-content:center;
+              font-size:17px; background:rgba(4,23,30,0.75);
+              border:1px solid rgba(111,227,201,0.35);
+              box-shadow:0 2px 10px rgba(0,0,0,0.5); user-select:none;
+              transition:border-color .2s, background .2s; }
+  #sleepBtn:hover { border-color:#6fe3c9; }
+  #sleepBtn.sleeping { background:rgba(80,20,20,0.55);
+                        border-color:rgba(255,140,140,0.5); }
+  body.overlay #sleepBtn, body.greenkey #sleepBtn { display:none !important; }
   #debug { position:absolute; top:12px; left:12px; z-index:998; display:none;
            background:rgba(0,0,0,0.65); color:#8ff0e4; padding:10px 12px;
            border-radius:8px; font:12px "SF Mono",Menlo,monospace; white-space:pre; }
@@ -298,10 +313,11 @@ setTimeout(function () {
 <video id="cam" autoplay playsinline muted></video>
 <div id="behind"></div>
 <div id="boot">JARVIS<br><span style="color:#a8d8cf;font-size:12px;letter-spacing:0.22em">fork of barehands, by jaredrhod</span><br><span style="color:#a8d8cf;font-size:13px">loading hand tracker… allow the camera when asked</span></div>
-<div id="hint">tap the RING = orbs · tap an orb = its tree · TAP a card = open · pinch-drag = move · hold still ~1s = 3D rotate · two hands = scale · TAP an open item = close · CLAP (palms together, fingers up) = ring center-stage · CLAW: flash open, claw, aim, hold the strain 2s, SNAP = force pull · empty pinch dragged sideways = explode scrub · open-hand swipe = switch desktop · R respawn / C camera / D debug</div>
+<div id="hint">tap the RING = orbs · tap an orb = its tree · TAP a card = open · pinch-drag = move · hold still ~1s = 3D rotate · two hands = scale · TAP an open item = close · CLAP (palms together, fingers up) = ring center-stage · CLAW: flash open, claw, aim, hold the strain 2s, SNAP = force pull · empty pinch dragged sideways = explode scrub · open-hand swipe = switch desktop · R respawn / C camera / D debug / S sleep-wake assistant</div>
 <div id="debug"></div>
 <div id="toast"></div>
 <div id="desktopDots"></div>
+<div id="sleepBtn" onclick="toggleAssistantSleep()" title="pause/wake the voice assistant (S)" style="display:none">😴</div>
 
 <script type="module">
 import { HandLandmarker, FilesetResolver } from
@@ -481,6 +497,14 @@ setInterval(async () => {
     const r = await fetch("/orb", { cache: "no-store" });
     if (r.ok) RING.data = await r.json();
   } catch (e) {}
+  // ASSISTANT SLEEP/WAKE button follows the same poll -- only shown at
+  // all if an assistant is actually running (RING.data.assistant).
+  const btn = document.getElementById("sleepBtn");
+  if (btn) {
+    btn.style.display = RING.data.assistant ? "flex" : "none";
+    btn.classList.toggle("sleeping", !!RING.data.sleeping);
+    btn.textContent = RING.data.sleeping ? "⏰" : "😴";
+  }
 }, 120);
 
 function ringAmp() {
@@ -1630,7 +1654,19 @@ addEventListener("keydown", e => {
     SAMPLER = { until: performance.now() + 4000, r: [], h8: [], h12: [], h16: [], h20: [], s: [], a: [] };
     toast("OMNI sampler: hold the pose for 4 seconds…", 4000);
   }
+  if (e.key === "s" || e.key === "S") toggleAssistantSleep();
 });
+
+// ---- ASSISTANT SLEEP/WAKE: a manual override for the voice assistant,
+// independent of the board and independent of saying a pause phrase
+// out loud (which needs Gemini to correctly hear it over whatever's
+// happening in the room). POSTs straight to server.py, which calls into
+// assistant/voice.py in the same process -- no board command involved.
+async function toggleAssistantSleep() {
+  const path = RING.data.sleeping ? "/assistant/wake" : "/assistant/sleep";
+  try { await fetch(path, { method: "POST" }); } catch (e) {}
+  toast(RING.data.sleeping ? "waking Jarvis…" : "Jarvis sleeping…", 1200);
+}
 
 function toScreen(lm) {
   const vw = cam.videoWidth, vh = cam.videoHeight;
