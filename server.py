@@ -309,7 +309,7 @@ def _start_assistant():
               f"run `pip install -r requirements.txt` to enable it; "
               f"board still works without it)", flush=True)
         return
-    start_assistant_thread()
+    start_assistant_thread(queue_cmd=_CMDS.append)
 
 
 if __name__ == "__main__":

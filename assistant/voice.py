@@ -68,15 +68,16 @@ SYS = """你是 Sadie——Chou 老大的 JARVIS 式駐守助理。你是冷靜�
 規則：
 1. 喚醒後先簡短說「Sir，我在。」
 2. 一般聊天、問答、哈拉 -> 直接語音回答，3 句話以內。
-3. 老大要求「動手做事」（記事、查/寫檔案、研究、整理筆記、設定等）-> 呼叫 run_opencode 工具，把任務寫成一句清楚的繁體中文指令。呼叫前先用一句話口頭說一下你要處理了（例如「我來處理一下」「稍等，我看看」），不要憑空沉默——這句話跟呼叫工具算同一輪，講完立刻呼叫，不用等回覆。
-4. 工具結果回來後，用 2~3 句口語轉述重點給老大。
-5. 老大說「掰掰/結束/晚安」等 -> 簡短道別後，不要再多話。
-6. 紅線確認（執行前必須先口頭問老大，等明確同意才動手）：會花錢的、會對外發布的、刪除檔案/移除東西、觸及權限/帳號/不可回復的操作。問法要簡短：「這會刪掉 X，確定嗎？」老大說好才做。其他操作直接做，不要每件事都問。"""
+3. 老大要求「動手做事」（記事、查/寫檔案、研究、上網查資料、整理筆記、設定等）-> 呼叫 run_opencode 工具，把任務寫成一句清楚的繁體中文指令；需要查網路資料就直接在指令裡寫清楚要查什麼，opencode 自己會上網。呼叫前先用一句話口頭說一下你要處理了（例如「我來處理一下」「稍等，我看看」），不要憑空沉默——這句話跟呼叫工具算同一輪，講完立刻呼叫，不用等回覆。
+4. 工具結果回來後，用 2~3 句口語轉述重點給老大。如果結果是查資料/研究類的內容（不是單純的「已完成」這種動作回報），額外呼叫 show_on_board 把整理過的重點秀在畫面上，老大自己問「幫我查/搜尋/看一下」這類要求時尤其要秀出來，不要只用講的。
+5. 老大明確說「秀出來/顯示在畫面上/放到板子上」時，直接呼叫 show_on_board，不用等 run_opencode。
+6. 老大說「掰掰/結束/晚安」等 -> 簡短道別後，不要再多話。
+7. 紅線確認（執行前必須先口頭問老大，等明確同意才動手）：會花錢的、會對外發布的、刪除檔案/移除東西、觸及權限/帳號/不可回復的操作。問法要簡短：「這會刪掉 X，確定嗎？」老大說好才做。其他操作直接做，不要每件事都問。"""
 
 TOOLS = [{
     "function_declarations": [{
         "name": "run_opencode",
-        "description": "把任務交給桌面端 opencode 實際執行：記事、查/寫檔案、研究、整理筆記等需要工具的操作。",
+        "description": "把任務交給桌面端 opencode 實際執行：記事、查/寫檔案、研究、上網搜尋/瀏覽網頁、整理筆記等需要工具的操作。opencode 自己有網路存取能力，直接把要查的東西寫進 task 就好，不需要另外的瀏覽器工具。",
         "parameters": {
             "type": "OBJECT",
             "properties": {
@@ -84,6 +85,17 @@ TOOLS = [{
                          "description": "要執行的任務，寫成一句清楚的繁體中文指令"}
             },
             "required": ["task"]
+        }
+    }, {
+        "name": "show_on_board",
+        "description": "把一段內容（通常是查資料/研究的結果）用卡片的形式秀在 Jarvis 的畫面上，飛到畫面中央。老大要求「秀出來」「顯示」「放到板子上」時，或查資料結果值得用眼睛看而不只是用聽的時候呼叫。",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "title": {"type": "STRING", "description": "卡片標題，簡短"},
+                "body": {"type": "STRING", "description": "卡片內文，整理過的重點文字"}
+            },
+            "required": ["title", "body"]
         }
     }]
 }]
@@ -429,29 +441,44 @@ class LiveSession:
         for fc in function_calls:
             fc_id = fc.get("id", "")
             name = fc.get("name", "")
-            if name != "run_opencode":
-                # Only run_opencode is registered in TOOLS -- an unknown
-                # call shouldn't be able to happen, but fail closed if it
-                # does rather than silently drop it.
+            args = fc.get("args") or {}
+            if name == "run_opencode":
+                task = args.get("task", "")
+                self._face("thinking")
+                self.on_status(f"🤔 思考中…（執行：「{task}」）")
+                self.play_q.put(play_ack_tone())
+                self.turn_count += 1
+                self.last_activity = time.time()
+                job = start_opencode_bg(task)
+                if job.get("proc") is not None or not job["done"]:
+                    with self.bg_lock:
+                        self.bg_jobs.append(job)
+                    msg = "任務「%s」已丟到背景執行，完成後我會通知你。" % task
+                    self.on_status(f"🔧 背景執行中：「{task}」")
+                else:
+                    msg = job.get("result") or "背景執行啟動失敗，請稍後再試。"
+                    self.on_status("❌ 背景執行啟動失敗")
+                responses.append({"id": fc_id, "name": name, "response": {"result": msg}})
+            elif name == "show_on_board":
+                title = str(args.get("title", "")).strip() or "Sadie"
+                body = str(args.get("body", "")).strip()
+                if _queue_cmd is None:
+                    msg = "board 沒有連上，秀不出來。"
+                else:
+                    try:
+                        _queue_cmd({"a": "add_card", "title": title, "body": body})
+                        msg = "已經秀在畫面上了。"
+                        self.on_status(f"🗂 秀上畫面：「{title}」")
+                    except Exception as e:
+                        msg = f"秀上畫面失敗：{e!r}"
+                responses.append({"id": fc_id, "name": name, "response": {"result": msg}})
+            else:
+                # Only the two tools above are registered in TOOLS -- an
+                # unknown call shouldn't be able to happen, but fail
+                # closed if it does rather than silently drop it.
                 responses.append({"id": fc_id, "name": name,
                                    "response": {"result": "此工具未啟用。"}})
                 continue
-            task = (fc.get("args") or {}).get("task", "")
-            self._face("thinking")
-            self.on_status(f"🤔 思考中…（執行：「{task}」）")
-            self.play_q.put(play_ack_tone())
-            self.turn_count += 1
-            self.last_activity = time.time()
-            job = start_opencode_bg(task)
-            if job.get("proc") is not None or not job["done"]:
-                with self.bg_lock:
-                    self.bg_jobs.append(job)
-                msg = "任務「%s」已丟到背景執行，完成後我會通知你。" % task
-                self.on_status(f"🔧 背景執行中：「{task}」")
-            else:
-                msg = job.get("result") or "背景執行啟動失敗，請稍後再試。"
-                self.on_status("❌ 背景執行啟動失敗")
-            responses.append({"id": fc_id, "name": name, "response": {"result": msg}})
             self.last_activity = time.time()
         if responses:
             await ws.send(json.dumps({"tool_response": {"function_responses": responses}}))
@@ -631,11 +658,21 @@ def _wake_loop_main():
         print(f"回待機——喊「{config.WAKE_HINT}」再次喚醒。", flush=True)
 
 
-def start_assistant_thread():
+_queue_cmd = None  # set by start_assistant_thread(); see show_on_board in handle_tool_calls
+
+
+def start_assistant_thread(queue_cmd=None):
     """Start the wake-word/conversation loop as a background daemon
     thread. Safe to call from server.py's __main__: if dependencies or
     credentials are missing, this prints a message and returns without
-    starting anything -- it never crashes the HTTP server."""
+    starting anything -- it never crashes the HTTP server.
+
+    queue_cmd: optional callable(cmd: dict) that appends a board command
+    directly into server.py's in-process _CMDS queue -- same process, so
+    no HTTP round-trip to /cmd is needed. Without it, show_on_board just
+    reports it can't reach the board instead of raising."""
+    global _queue_cmd
+    _queue_cmd = queue_cmd
     t = threading.Thread(target=_wake_loop_main, daemon=True, name="jarvis-assistant")
     t.start()
     return t

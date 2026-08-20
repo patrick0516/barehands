@@ -53,9 +53,11 @@ starts both the board and the assistant together; without the install
 step, the board still runs exactly as before and just logs that the
 assistant didn't start.
 
-Currently ported: wake word, real-time conversation, and background task
-dispatch through `opencode`. Desktop control, memory, and calendar/todo
-management are intentionally not part of this yet — see
+Currently ported: wake word, real-time conversation, background task
+dispatch (including web research) through `opencode`, and putting the
+result up on the board as a card when you ask to see it instead of just
+hear it. Desktop control, memory, and calendar/todo management are
+intentionally not part of this yet — see
 [sadie-voice](https://github.com/patrick0516/sadie-voice) if you want those
 today.
 
